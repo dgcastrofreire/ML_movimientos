@@ -3,7 +3,7 @@ import random
 from matplotlib import pyplot as plt
 import pandas as pd
 import numpy as np
-from scipy.signal import savgol_filter
+from scipy.signal import savgol_filter, butter, lfilter, filtfilt
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.ensemble import RandomForestClassifier
@@ -16,6 +16,8 @@ import matplotlib.pyplot as plt
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import Input, LSTM, Dense
 from tensorflow.random import set_seed
+        
+        
 
 def read_data_from_csv(file_path):
     """
@@ -35,19 +37,22 @@ def read_data_from_csv(file_path):
         raise ValueError(f"El archivo {file_path} no tiene el número esperado de columnas.")
 
     # Suavizado con Savitzky-Golay y normalización de todos los componentes
-    window_size = 101
-    df['acc_x_smooth'] = savgol_filter(df['acc_x'], window_length=window_size, polyorder=2)
-    df['acc_y_smooth'] = savgol_filter(df['acc_y'], window_length=window_size, polyorder=2)
-    df['acc_z_smooth'] = savgol_filter(df['acc_z'], window_length=window_size, polyorder=2)
-    df['gyro_x_smooth'] = savgol_filter(df['gyro_x'], window_length=window_size, polyorder=2)
-    df['gyro_y_smooth'] = savgol_filter(df['gyro_y'], window_length=window_size, polyorder=2)
-    df['gyro_z_smooth'] = savgol_filter(df['gyro_z'], window_length=window_size, polyorder=2)
+    window_size = 220
+    df['acc_x_smooth'] = savgol_filter(df['acc_x'], window_length=window_size, polyorder=1, mode="nearest")
+    df['acc_y_smooth'] = savgol_filter(df['acc_y'], window_length=window_size, polyorder=1, mode="nearest")
+    df['acc_z_smooth'] = savgol_filter(df['acc_z'], window_length=window_size, polyorder=1, mode="nearest")
+    df['gyro_x_smooth'] = savgol_filter(df['gyro_x'], window_length=window_size,polyorder=1, mode="nearest")
+    df['gyro_y_smooth'] = savgol_filter(df['gyro_y'], window_length=window_size, polyorder=1, mode="nearest")
+    df['gyro_z_smooth'] = savgol_filter(df['gyro_z'], window_length=window_size, polyorder=1, mode="nearest")
 
     # Calcular la magnitud del acelerómetro y giroscopio
     df['acc_magnitude'] = np.sqrt(df['acc_x_smooth']**2 + df['acc_y_smooth']**2 + df['acc_z_smooth']**2)
     df['gyro_magnitude'] = np.sqrt(df['gyro_x_smooth']**2 + df['gyro_y_smooth']**2 + df['gyro_z_smooth']**2)
+    
+    T = 1/100
+    fs = 100
 
-    """
+    
 # Gráfica del Acelerómetro y Giroscopio en X por separado
     plt.figure(figsize=(10, 12))
 
@@ -125,24 +130,17 @@ def read_data_from_csv(file_path):
     plt.grid(True)
     plt.tight_layout()
     plt.show()
-    """   
+      
     return df
 
 def extract_repetitions(filename):
-    """
-    Extrae el número de repeticiones del nombre del archivo.
     
-    Args:
-        filename: Nombre del archivo como string.
-    
-    Returns:
-        Número de repeticiones como entero.
-    """
     match = re.search(r'_(\d+)rep_', filename)
     if match:
         return int(match.group(1))
     else:
         raise ValueError(f"No se encontraron repeticiones en el archivo {filename}")
+    
 
 def create_windows(data, window_size, step_size):
     """
@@ -185,86 +183,10 @@ all_windows = []
 all_labels = []
 
 # Parámetros para las ventanas
-window_size = 100  # Número de timesteps por ventana
+window_size = 150 # Número de timesteps por ventana
 step_size = 50     # Desplazamiento entre ventanas
 
-# Lectura y etiquetado
 for filename in os.listdir(csv_directory):
     if filename.endswith(".csv"):
         file_path = os.path.join(csv_directory, filename)
         df = read_data_from_csv(file_path)
-
-        # Crear ventanas
-        windows = create_windows(df, window_size, step_size)
-        all_windows.append(windows)
-
-        # Etiquetas: 0 = flexión, 1 = extensión (basado en el nombre del archivo)
-        if "flexion" in filename.lower():
-            labels_class  = np.zeros(shape=(windows.shape[0],))  # Etiquetas 0
-        elif "extension" in filename.lower():
-            labels_class  = np.ones(shape=(windows.shape[0],))  # Etiquetas 1
-        else:
-            raise ValueError(f"No se pudo asignar etiqueta al archivo {filename}")
-        
-        
-        # Etiqueta de repeticiones
-        repetitions = extract_repetitions(filename)
-        labels_reps = np.full(shape=(windows.shape[0],), fill_value=repetitions)
-        
-        #Concatenar etiquetas
-        labels = np.column_stack((labels_class, labels_reps))
-        all_labels.append(labels)
-
-
-# Concatenar los datos y etiquetas
-all_windows = np.concatenate(all_windows, axis=0)
-all_labels = np.concatenate(all_labels, axis=0)
-
-print(f"Forma de los datos para LSTM: {all_windows.shape}")  # (n_samples, timesteps, features)
-print(f"Forma de las etiquetas: {all_labels.shape}")
-
-# Dividir en entrenamiento y prueba
-train_data, test_data, train_labels, test_labels = train_test_split(all_windows, all_labels, test_size=0.2, random_state=42)
-
-# Crear el modelo LSTM
-fijar_semillas()
-entrada = Input(shape=(window_size, all_windows.shape[2]))
-lstm_out = LSTM(64)(entrada)
-output_class = Dense(1, activation='sigmoid', name='classification')(lstm_out)
-output_reps = Dense(1, activation='relu', name='repetitions')(lstm_out)
-
-modelo = Model(inputs=entrada, outputs=[output_class, output_reps])
-
-# Compilar el modelo
-modelo.compile(
-    optimizer='adam',
-    loss={
-        'classification': 'binary_crossentropy',
-        'repetitions': 'mean_squared_error'
-    },
-    metrics={
-        'classification': 'accuracy',
-        'repetitions': 'mean_absolute_error'
-    }
-)
-
-# Entrenar el modelo
-# Dividir etiquetas en clasificación y repeticiones
-train_labels_class = train_labels[:, 0]
-train_labels_reps = train_labels[:, 1]
-test_labels_class = test_labels[:, 0]
-test_labels_reps = test_labels[:, 1]
-
-# Entrenar el modelo
-modelo.fit(
-    train_data,
-    {'classification': train_labels_class, 'repetitions': train_labels_reps},
-    validation_data=(test_data, {'classification': test_labels_class, 'repetitions': test_labels_reps}),
-    epochs=10
-)
-
-
-
-# Guardar el modelo
-modelo.save("modelo_lstm_multisalida.h5")
-print("Modelo guardado exitosamente.")
