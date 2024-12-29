@@ -47,7 +47,7 @@ def create_windows(data, window_size, step_size):
 
 
 # Cargar el modelo
-modelo_cargado = load_model("C:/Users/Diego Castro/Documents/Uvigo/Uvigo/4º/TFG/MLsensor/modelo_lstm_multisalida.h5")
+modelo_cargado = load_model("C:/Users/Diego Castro/Documents/Uvigo/Uvigo/4º/TFG/MLsensor/modelo_lstm_clasificacion_tiempo_real.h5")
 csv_directory = "C:/Users/Diego Castro/Documents/Uvigo/Uvigo/4º/TFG/MLsensor/Mezcla"
 
 for filename in os.listdir(csv_directory):
@@ -60,19 +60,14 @@ for filename in os.listdir(csv_directory):
         predicciones = modelo_cargado.predict(nuevas_ventanas, verbose=0)
         
         # Separar las predicciones
-        pred_clasificacion = predicciones[0].flatten()  # Predicciones de flexión/extensión
-        pred_repeticiones = predicciones[1].flatten()   # Predicciones de número de repeticiones
+        pred_clasificacion = predicciones.flatten()  # Predicciones de flexión/extensión
         
         # Determinar el resultado global de clasificación
         promedio_clasificacion = np.mean(pred_clasificacion)
         resultado_clasificacion = "Extensión" if promedio_clasificacion >= 0.5 else "Flexión"
         
-        # Calcular el promedio de repeticiones predichas
-        promedio_repeticiones = np.mean(pred_repeticiones)
-
         # Imprimir resultados
         print(f"Archivo: {filename}")
         print(f"Promedio de clasificación: {promedio_clasificacion:.4f}")
         print(f"Predicción global (clasificación): {resultado_clasificacion}")
-        print(f"Promedio de repeticiones predichas: {promedio_repeticiones:.2f}")
         print("-" * 30)

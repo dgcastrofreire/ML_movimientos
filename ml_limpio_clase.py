@@ -1,40 +1,26 @@
 import os
 import random
-from matplotlib import pyplot as plt
 import pandas as pd
 import numpy as np
 from scipy.signal import savgol_filter
-from sklearn.preprocessing import MinMaxScaler
-from sklearn.model_selection import train_test_split, GridSearchCV
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import classification_report, confusion_matrix
-import re
-
-import joblib
-import matplotlib.pyplot as plt
-
+from sklearn.model_selection import train_test_split
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import Input, LSTM, Dense
 from tensorflow.random import set_seed
 
 def read_data_from_csv(file_path):
     """
-    Leer y procesar datos CSV incluyendo acelerómetro, giroscopio y etiquetas (bien/mal).
+    Leer y procesar datos CSV incluyendo acelerómetro y giroscopio.
     """
     print(f"Leyendo archivo {file_path}")
     df = pd.read_csv(file_path)
-
-    # Asignar nombres de columnas
-    '''if df.shape[1] == 9:
-        df.columns = ['index', 'timestamp', 'acc_x', 'acc_y', 'acc_z', 'gyro_x', 'gyro_y', 'gyro_z', 'label']
-        df = df.drop(columns=['index'])'''
         
     if df.shape[1] == 8:
-        df.columns = ['timestamp_acc', 'acc_x', 'acc_y', 'acc_z','timestamp_gyro', 'gyro_x', 'gyro_y', 'gyro_z']
+        df.columns = ['timestamp_acc', 'acc_x', 'acc_y', 'acc_z', 'timestamp_gyro', 'gyro_x', 'gyro_y', 'gyro_z']
     else:
         raise ValueError(f"El archivo {file_path} no tiene el número esperado de columnas.")
 
-    # Suavizado con Savitzky-Golay y normalización de todos los componentes
+    # Suavizado con Savitzky-Golay
     window_size = 101
     df['acc_x_smooth'] = savgol_filter(df['acc_x'], window_length=window_size, polyorder=2)
     df['acc_y_smooth'] = savgol_filter(df['acc_y'], window_length=window_size, polyorder=2)
@@ -43,118 +29,11 @@ def read_data_from_csv(file_path):
     df['gyro_y_smooth'] = savgol_filter(df['gyro_y'], window_length=window_size, polyorder=2)
     df['gyro_z_smooth'] = savgol_filter(df['gyro_z'], window_length=window_size, polyorder=2)
 
-    # Calcular la magnitud del acelerómetro y giroscopio
-    df['acc_magnitude'] = np.sqrt(df['acc_x_smooth']**2 + df['acc_y_smooth']**2 + df['acc_z_smooth']**2)
-    df['gyro_magnitude'] = np.sqrt(df['gyro_x_smooth']**2 + df['gyro_y_smooth']**2 + df['gyro_z_smooth']**2)
-
-    """
-# Gráfica del Acelerómetro y Giroscopio en X por separado
-    plt.figure(figsize=(10, 12))
-
-    plt.subplot(3, 2, 1)
-    plt.plot(df['timestamp_acc'], df['acc_x_smooth'], label='Acelerómetro X', color='b')
-    plt.title('Acelerómetro en X')
-    plt.xlabel('Tiempo (timestamp)')
-    plt.ylabel('Magnitud')
-    plt.legend()
-    plt.grid(True)
-
-    plt.subplot(3, 2, 2)
-    plt.plot(df['timestamp_gyro'], df['gyro_x_smooth'], label='Giroscopio X', color='r')
-    plt.title('Giroscopio en X')
-    plt.xlabel('Tiempo (timestamp)')
-    plt.ylabel('Magnitud')
-    plt.legend()
-    plt.grid(True)
-
-    # Gráfica del Acelerómetro y Giroscopio en Y por separado
-    plt.subplot(3, 2, 3)
-    plt.plot(df['timestamp_acc'], df['acc_y_smooth'], label='Acelerómetro Y', color='g')
-    plt.title('Acelerómetro en Y')
-    plt.xlabel('Tiempo (timestamp)')
-    plt.ylabel('Magnitud')
-    plt.legend()
-    plt.grid(True)
-
-    plt.subplot(3, 2, 4)
-    plt.plot(df['timestamp_gyro'], df['gyro_y_smooth'], label='Giroscopio Y', color='orange')
-    plt.title('Giroscopio en Y')
-    plt.xlabel('Tiempo (timestamp)')
-    plt.ylabel('Magnitud')
-    plt.legend()
-    plt.grid(True)
-
-    # Gráfica del Acelerómetro y Giroscopio en Z por separado
-    plt.subplot(3, 2, 5)
-    plt.plot(df['timestamp_acc'], df['acc_z_smooth'], label='Acelerómetro Z', color='purple')
-    plt.title('Acelerómetro en Z')
-    plt.xlabel('Tiempo (timestamp)')
-    plt.ylabel('Magnitud')
-    plt.legend()
-    plt.grid(True)
-
-    plt.subplot(3, 2, 6)
-    plt.plot(df['timestamp_gyro'], df['gyro_z_smooth'], label='Giroscopio Z', color='brown')
-    plt.title('Giroscopio en Z')
-    plt.xlabel('Tiempo (timestamp)')
-    plt.ylabel('Magnitud')
-    plt.legend()
-    plt.grid(True)
-
-    plt.tight_layout()
-    plt.show()
-
-    # Graficar la magnitud del acelerómetro por separado
-    plt.figure(figsize=(10, 5))
-    plt.plot(df['timestamp_acc'], df['acc_magnitude'], label='Magnitud del Acelerómetro', color='b', alpha=0.7)
-    plt.title('Magnitud del Acelerómetro')
-    plt.xlabel('Tiempo (timestamp)')
-    plt.ylabel('Magnitud')
-    plt.legend()
-    plt.grid(True)
-    plt.tight_layout()
-    plt.show()
-
-    # Graficar la magnitud del giroscopio por separado
-    plt.figure(figsize=(10, 5))
-    plt.plot(df['timestamp_gyro'], df['gyro_magnitude'], label='Magnitud del Giroscopio', color='r', alpha=0.7)
-    plt.title('Magnitud del Giroscopio')
-    plt.xlabel('Tiempo (timestamp)')
-    plt.ylabel('Magnitud')
-    plt.legend()
-    plt.grid(True)
-    plt.tight_layout()
-    plt.show()
-    """   
     return df
-
-def extract_repetitions(filename):
-    """
-    Extrae el número de repeticiones del nombre del archivo.
-    
-    Args:
-        filename: Nombre del archivo como string.
-    
-    Returns:
-        Número de repeticiones como entero.
-    """
-    match = re.search(r'_(\d+)rep_', filename)
-    if match:
-        return int(match.group(1))
-    else:
-        raise ValueError(f"No se encontraron repeticiones en el archivo {filename}")
 
 def create_windows(data, window_size, step_size):
     """
     Divide datos en ventanas deslizantes.
-    
-    Args:
-        data: DataFrame con las columnas de características (6 dimensiones).
-        window_size: Longitud de cada ventana (timesteps).
-        step_size: Número de muestras a deslizar la ventana.
-    
-    Returns:
-        numpy array con forma (n_windows, window_size, n_features).
     """
     features = ['acc_x_smooth', 'acc_y_smooth', 'acc_z_smooth',
                 'gyro_x_smooth', 'gyro_y_smooth', 'gyro_z_smooth']
@@ -169,15 +48,13 @@ def create_windows(data, window_size, step_size):
     
     return np.array(windows)
 
-
-# Función fijar semillas (para reproducibilidad de los resultados)
+# Configurar semillas para reproducibilidad
 def fijar_semillas():
     set_seed(111)
     np.random.seed(111)
     random.seed(111)
-    
-    
-    
+
+# Directorio con los archivos CSV
 csv_directory = "C:/Users/Diego Castro/Documents/Uvigo/Uvigo/4º/TFG/MLsensor/Mezcla"
 
 # Acumuladores para los datos y etiquetas
@@ -200,21 +77,13 @@ for filename in os.listdir(csv_directory):
 
         # Etiquetas: 0 = flexión, 1 = extensión (basado en el nombre del archivo)
         if "flexion" in filename.lower():
-            labels_class  = np.zeros(shape=(windows.shape[0],))  # Etiquetas 0
+            labels_class = np.zeros(shape=(windows.shape[0],))  # Etiquetas 0
         elif "extension" in filename.lower():
-            labels_class  = np.ones(shape=(windows.shape[0],))  # Etiquetas 1
+            labels_class = np.ones(shape=(windows.shape[0],))  # Etiquetas 1
         else:
             raise ValueError(f"No se pudo asignar etiqueta al archivo {filename}")
         
-        
-        # Etiqueta de repeticiones
-        repetitions = extract_repetitions(filename)
-        labels_reps = np.full(shape=(windows.shape[0],), fill_value=repetitions)
-        
-        #Concatenar etiquetas
-        labels = np.column_stack((labels_class, labels_reps))
-        all_labels.append(labels)
-
+        all_labels.append(labels_class)
 
 # Concatenar los datos y etiquetas
 all_windows = np.concatenate(all_windows, axis=0)
@@ -224,47 +93,33 @@ print(f"Forma de los datos para LSTM: {all_windows.shape}")  # (n_samples, times
 print(f"Forma de las etiquetas: {all_labels.shape}")
 
 # Dividir en entrenamiento y prueba
-train_data, test_data, train_labels, test_labels = train_test_split(all_windows, all_labels, test_size=0.2, random_state=42)
+train_data, test_data, train_labels, test_labels = train_test_split(
+    all_windows, all_labels, test_size=0.2, random_state=42
+)
 
 # Crear el modelo LSTM
 fijar_semillas()
 entrada = Input(shape=(window_size, all_windows.shape[2]))
 lstm_out = LSTM(64)(entrada)
 output_class = Dense(1, activation='sigmoid', name='classification')(lstm_out)
-output_reps = Dense(1, activation='relu', name='repetitions')(lstm_out)
 
-modelo = Model(inputs=entrada, outputs=[output_class, output_reps])
+modelo = Model(inputs=entrada, outputs=output_class)
 
 # Compilar el modelo
 modelo.compile(
     optimizer='adam',
-    loss={
-        'classification': 'binary_crossentropy',
-        'repetitions': 'mean_squared_error'
-    },
-    metrics={
-        'classification': 'accuracy',
-        'repetitions': 'mean_absolute_error'
-    }
+    loss='binary_crossentropy',
+    metrics=['accuracy']
 )
-
-# Entrenar el modelo
-# Dividir etiquetas en clasificación y repeticiones
-train_labels_class = train_labels[:, 0]
-train_labels_reps = train_labels[:, 1]
-test_labels_class = test_labels[:, 0]
-test_labels_reps = test_labels[:, 1]
 
 # Entrenar el modelo
 modelo.fit(
     train_data,
-    {'classification': train_labels_class, 'repetitions': train_labels_reps},
-    validation_data=(test_data, {'classification': test_labels_class, 'repetitions': test_labels_reps}),
+    train_labels,
+    validation_data=(test_data, test_labels),
     epochs=10
 )
 
-
-
 # Guardar el modelo
-modelo.save("modelo_lstm_multisalida.h5")
+modelo.save("modelo_lstm_clasificacion.h5")
 print("Modelo guardado exitosamente.")
