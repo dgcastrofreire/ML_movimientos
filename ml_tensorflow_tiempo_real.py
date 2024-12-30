@@ -7,7 +7,9 @@ from tensorflow.keras.layers import Input, LSTM, Dense
 from tensorflow.keras.optimizers import Adam
 from tensorflow.random import set_seed
 from sklearn.model_selection import train_test_split
+import tensorflow as tf
 import time
+from tensorflow.keras.layers import GRU
 
 # Configuración de simulación
 sampling_rate = 100  # Frecuencia de muestreo en Hz
@@ -56,16 +58,17 @@ def simulate_real_time_data(df, window_size, step_size):
         yield window
 
 # Crear el modelo LSTM
-def create_model(input_shape):
+def create_gru_model(input_shape):
     """
-    Crear un modelo LSTM para la clasificación binaria.
+    Crear un modelo GRU para la clasificación binaria.
     """
     entrada = Input(shape=input_shape)
-    lstm_out = LSTM(16)(entrada)
-    output_class = Dense(1, activation='sigmoid')(lstm_out)
+    gru_out = GRU(8)(entrada)  # Cambiado LSTM por GRU
+    output_class = Dense(1, activation='sigmoid')(gru_out)
     model = Model(inputs=entrada, outputs=output_class)
     model.compile(optimizer=Adam(learning_rate=0.001), loss='binary_crossentropy', metrics=['accuracy'])
     return model
+
 
 # Directorio con los datos
 csv_directory = "C:/Users/Diego Castro/Documents/Uvigo/Uvigo/4º/TFG/MLsensor/Mezcla"
@@ -103,18 +106,27 @@ print(f"Datos generados: {all_windows.shape}, Etiquetas: {all_labels.shape}")
 # Dividir en conjunto de entrenamiento y prueba
 train_data, test_data, train_labels, test_labels = train_test_split(all_windows, all_labels, test_size=0.2, random_state=42)
 
-# Crear y entrenar el modelo
+# Crear y entrenar el modelo con GRU
 input_shape = (window_size, features)
-model = create_model(input_shape)
+gru_model = create_gru_model(input_shape)
 
-print("Entrenando el modelo...")
-model.fit(
+print("Entrenando el modelo con GRU...")
+gru_model.fit(
     train_data, train_labels,
     validation_data=(test_data, test_labels),
     epochs=10,
     batch_size=32
 )
+# Convertir el modelo GRU a TensorFlow Lite
+print("Convirtiendo el modelo GRU a TensorFlow Lite...")
+gru_converter = tf.lite.TFLiteConverter.from_keras_model(gru_model)
+gru_converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS, tf.lite.OpsSet.SELECT_TF_OPS]
+gru_converter.experimental_enable_resource_variables = True
+gru_tflite_model = gru_converter.convert()
 
-# Guardar el modelo entrenado
-model.save("modelo_lstm_clasificacion_tiempo_real.h5")
-print("Modelo guardado exitosamente.")
+# Guardar el modelo en formato TensorFlow Lite
+gru_tflite_model_path = "modelo_gru_clasificacion_tiempo_real.tflite"
+with open(gru_tflite_model_path, "wb") as f:
+    f.write(gru_tflite_model)
+
+print(f"Modelo GRU en formato TensorFlow Lite guardado en {gru_tflite_model_path}.")
