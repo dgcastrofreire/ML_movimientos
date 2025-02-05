@@ -11,11 +11,12 @@ import tensorflow as tf
 import time
 from tensorflow.keras.layers import GRU
 
+
 # Configuración de simulación
 sampling_rate = 100  # Frecuencia de muestreo en Hz
 time_step = 1 / sampling_rate  # Intervalo entre muestras
-window_size = 100  # Ventana deslizante (número de timesteps por ventana)
-features = 6  # Número de características (acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z)
+window_size = 50  # Ventana deslizante (número de timesteps por ventana)
+features = 11  # Número de características (acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z)
 
 # Configuración de semillas para reproducibilidad
 def fijar_semillas():
@@ -23,6 +24,13 @@ def fijar_semillas():
     np.random.seed(111)
 
 fijar_semillas()
+
+
+def moving_average(data, window_size):
+    """
+    Calcula el promedio móvil para suavizar datos.
+    """
+    return np.convolve(data, np.ones(window_size) / window_size, mode='same')
 
 def read_data_from_csv(file_path):
     """
@@ -36,22 +44,37 @@ def read_data_from_csv(file_path):
         raise ValueError(f"El archivo {file_path} no tiene el número esperado de columnas.")
     
     # Suavizado con Savitzky-Golay
-    window = 101
-    df['acc_x_smooth'] = savgol_filter(df['acc_x'], window_length=window, polyorder=2)
-    df['acc_y_smooth'] = savgol_filter(df['acc_y'], window_length=window, polyorder=2)
-    df['acc_z_smooth'] = savgol_filter(df['acc_z'], window_length=window, polyorder=2)
-    df['gyro_x_smooth'] = savgol_filter(df['gyro_x'], window_length=window, polyorder=2)
-    df['gyro_y_smooth'] = savgol_filter(df['gyro_y'], window_length=window, polyorder=2)
-    df['gyro_z_smooth'] = savgol_filter(df['gyro_z'], window_length=window, polyorder=2)
-
+    window = 50
+    df['acc_x_smooth'] = moving_average(df['acc_x'], window)
+    df['acc_y_smooth'] = moving_average(df['acc_y'], window)
+    df['acc_z_smooth'] = moving_average(df['acc_z'], window)
+    df['gyro_x_smooth'] = moving_average(df['gyro_x'],window)
+    df['gyro_y_smooth'] = moving_average(df['gyro_y'], window)
+    df['gyro_z_smooth'] = moving_average(df['gyro_z'], window)
+    
+    # Magnitudes (rápidas de calcular)
+    df['acc_magnitude'] = np.sqrt(df['acc_x_smooth']**2 + df['acc_y_smooth']**2 + df['acc_z_smooth']**2)
+    df['gyro_magnitude'] = np.sqrt(df['gyro_x_smooth']**2 + df['gyro_y_smooth']**2 + df['gyro_z_smooth']**2)
+    
+    # Opcional: Velocidades (más rápidas que las aceleraciones de segundo orden)
+    df['gyro_x_velocity'] = df['gyro_x_smooth'].diff() / time_step
+    df['gyro_y_velocity'] = df['gyro_y_smooth'].diff() / time_step
+    df['gyro_z_velocity'] = df['gyro_z_smooth'].diff() / time_step
+    
+    # Llenar valores NaN generados por diferencias
+    df.fillna(0, inplace=True)
+    
     return df
 
 def simulate_real_time_data(df, window_size, step_size):
     """
     Genera datos en tiempo real simulados desde un DataFrame.
     """
+    # Asegúrate de incluir exactamente 12 características
     features = ['acc_x_smooth', 'acc_y_smooth', 'acc_z_smooth',
-                'gyro_x_smooth', 'gyro_y_smooth', 'gyro_z_smooth']
+                'gyro_x_smooth', 'gyro_y_smooth', 'gyro_z_smooth',
+                'gyro_x_velocity', 'gyro_y_velocity', 'gyro_z_velocity',
+                'acc_magnitude', 'gyro_magnitude']  # Ajusta si falta una característica
     data = df[features].values
     for start in range(0, len(data) - window_size + 1, step_size):
         window = data[start:start + window_size]
@@ -85,10 +108,16 @@ for filename in os.listdir(csv_directory):
         # Etiqueta según el tipo de ejercicio
         if "flexion" in filename.lower():
             label = 0  # Flexión
+        elif "flex_bajo" in filename.lower():
+            label = 0
         elif "extension" in filename.lower():
             label = 1  # Extensión
+            
+        elif "ext_subo" in filename.lower():
+            label = 1  # Extensión
         elif "idle" in filename.lower():
-            label = 2  # Extensión
+            label = 2  # Quieto
+        
         else:
             raise ValueError(f"No se pudo asignar etiqueta al archivo {filename}")
 
@@ -126,7 +155,7 @@ gru_converter.experimental_enable_resource_variables = True
 gru_tflite_model = gru_converter.convert()
 
 # Guardar el modelo en formato TensorFlow Lite
-gru_tflite_model_path = "modelo_gru_clasificacion_tiempo_real_multiclase.tflite"
+gru_tflite_model_path = "multiclase_final.tflite"
 with open(gru_tflite_model_path, "wb") as f:
     f.write(gru_tflite_model)
 

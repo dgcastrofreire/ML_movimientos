@@ -43,6 +43,17 @@ def read_data_from_csv(file_path):
     df['gyro_x_smooth'] = savgol_filter(df['gyro_x'], window_length=window, polyorder=2)
     df['gyro_y_smooth'] = savgol_filter(df['gyro_y'], window_length=window, polyorder=2)
     df['gyro_z_smooth'] = savgol_filter(df['gyro_z'], window_length=window, polyorder=2)
+    
+    df['gyro_x_velocity'] = df['gyro_x_smooth'].diff() / time_step
+    df['gyro_y_velocity'] = df['gyro_y_smooth'].diff() / time_step
+    df['gyro_z_velocity'] = df['gyro_z_smooth'].diff() / time_step
+
+    df['acc_x_acceleration'] = df['acc_x_smooth'].diff().diff() / time_step**2
+    df['acc_y_acceleration'] = df['acc_y_smooth'].diff().diff() / time_step**2
+    df['acc_z_acceleration'] = df['acc_z_smooth'].diff().diff() / time_step**2
+    
+    df['acc_magnitude'] = np.sqrt(df['acc_x_smooth']**2 + df['acc_y_smooth']**2 + df['acc_z_smooth']**2)
+    df['gyro_magnitude'] = np.sqrt(df['gyro_x_smooth']**2 + df['gyro_y_smooth']**2 + df['gyro_z_smooth']**2)
 
     return df
 
