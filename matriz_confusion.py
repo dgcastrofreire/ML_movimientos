@@ -72,7 +72,7 @@ def calculate_magnitudes(df):
     return acc_magnitude, gyro_magnitude
 
 # Leer datos y calcular estadísticas
-csv_directory = "C:/Users/Diego Castro/Documents/Uvigo/Uvigo/4º/TFG/MLsensor/Mezcla"
+csv_directory = "C:/Users/Diego Castro/Documents/Uvigo/Uvigo/4º/TFG/MLsensor"
 for filename in os.listdir(csv_directory):
     if filename.endswith(".csv"):
         file_path = os.path.join(csv_directory, filename)
